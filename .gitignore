@@ -163,6 +163,7 @@ cython_debug/
 
 # Project directories
 results/
-
+results_BA/
 # MacOS
 .DS_Store
+COMPARISON_*.xlsx

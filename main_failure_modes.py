@@ -44,7 +44,7 @@ def load_and_display_results(results_path, experiment_name=""):
 # Functional baseline configurations; must update data_path and vect_maps manually after inspection
 FUNCTIONAL_CONFIGS = {
     'rInf': {
-        'run': False,
+        'run': True,
         'run_type': 'functional_rInf',
         'swarm_r': float('inf'),
         'env_config_type': 0,  # with obstacles
@@ -83,7 +83,7 @@ DEFAULT_FUNCTIONAL_PARAMS = {
 # Experiment definitions: each entry specifies failure_option, failure_type, and num_failures
 EXPERIMENT_CONFIGS = {
     'exp1_power_reduction': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf']['vect_maps'],
@@ -95,7 +95,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Power Reduction'
     },
     'exp1_power_reduction_obs0': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf_obs0']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf_obs0']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf_obs0']['vect_maps'],
@@ -107,7 +107,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Power Reduction - No Obstacles'
     },
     'exp1_power_cutoff': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf']['vect_maps'],
@@ -119,7 +119,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Power Cutoff'
     },
     'exp1_power_cutoff_obs0': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf_obs0']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf_obs0']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf_obs0']['vect_maps'],
@@ -131,7 +131,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Power Cutoff - No Obstacles'
     },
     'exp2_velocity_single': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf']['vect_maps'],
@@ -143,7 +143,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Single Velocity'
     },
     'exp2_velocity_single_obs0': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf_obs0']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf_obs0']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf_obs0']['vect_maps'],
@@ -155,7 +155,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Single Velocity - No Obstacles'
     },
     'exp3_velocity_double': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf']['vect_maps'],
@@ -167,7 +167,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Double Velocity'
     },
     'exp3_velocity_double_obs0': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf_obs0']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf_obs0']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf_obs0']['vect_maps'],
@@ -179,7 +179,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Double Velocity - No Obstacles'
     },
     'exp4_velocity_triple': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf']['vect_maps'],
@@ -191,7 +191,7 @@ EXPERIMENT_CONFIGS = {
         'description': 'Triple Velocity'
     },
     'exp4_velocity_triple_obs0': {
-        'run': True,
+        'run': False,
         'functional_path': FUNCTIONAL_CONFIGS['rInf_obs0']['data_path'],
         'env_config_type': FUNCTIONAL_CONFIGS['rInf_obs0']['env_config_type'],
         'vect_trials': FUNCTIONAL_CONFIGS['rInf_obs0']['vect_maps'],
@@ -204,37 +204,37 @@ EXPERIMENT_CONFIGS = {
     }
 }
 
-# Common GA parameters (can be overridden per experiment if needed)
-DEFAULT_GA_PARAMS = {
-    'population_size': 100,
-    'end_time_mult': 2.0,
-    'f_min_points': 0.5,
-    'v_ref': 6.0,
-    'flag_parallel': True,
-    'flag_eng_persist': True,
-    'terminate': {
-        'num_gen': 100,
-        'max_time': 1*3600,  # maximum time allowed PER TRIAL/SEARCH [sec]
-        'gen_stagnation': None,
-        'gen_stagnation_tol': None,
-        'min_f': 1e-6  # stop if fitness reaches 0 (some tolerance for machine error)
-    }
-}
-# DEFAULT_GA_PARAMS = {  # FOR DEBUGGING
-#     'population_size': 3,
+# # Common GA parameters (can be overridden per experiment if needed)
+# DEFAULT_GA_PARAMS = {
+#     'population_size': 100,
 #     'end_time_mult': 2.0,
 #     'f_min_points': 0.5,
 #     'v_ref': 6.0,
-#     'flag_parallel': False,
+#     'flag_parallel': True,
 #     'flag_eng_persist': True,
 #     'terminate': {
 #         'num_gen': 100,
-#         'max_time': 300,  # maximum time allowed PER TRIAL/SEARCH [sec]
+#         'max_time': 1*3600,  # maximum time allowed PER TRIAL/SEARCH [sec]
 #         'gen_stagnation': None,
 #         'gen_stagnation_tol': None,
 #         'min_f': 1e-6  # stop if fitness reaches 0 (some tolerance for machine error)
 #     }
 # }
+DEFAULT_GA_PARAMS = {  # FOR DEBUGGING
+    'population_size': 3,
+    'end_time_mult': 2.0,
+    'f_min_points': 0.5,
+    'v_ref': 6.0,
+    'flag_parallel': False,
+    'flag_eng_persist': True,
+    'terminate': {
+        'num_gen': 100,
+        'max_time': 300,  # maximum time allowed PER TRIAL/SEARCH [sec]
+        'gen_stagnation': None,
+        'gen_stagnation_tol': None,
+        'min_f': 1e-6  # stop if fitness reaches 0 (some tolerance for machine error)
+    }
+}
 
 
 # ========================================

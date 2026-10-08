@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = PROJECT_ROOT / 'results'
 
 # Directory where simulator script is located
-SIM_DIR = PROJECT_ROOT / '..' / 'swarmlab-experimental' / 'projects' / 'robustness-failures-obstacles'
+SIM_DIR = PROJECT_ROOT / '..' / 'swarmlab-augmented-fork' / 'projects' / 'robustness-failures-obstacles'
 
 # Number of trials
 MAX_NUM_TRIALS = 100  # Assuming no more than 100 unique trials used.

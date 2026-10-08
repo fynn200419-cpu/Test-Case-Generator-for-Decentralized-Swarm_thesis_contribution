@@ -2,7 +2,7 @@
 name = "experiment-targeted-failure-modes"
 version = "0.1.0"
 description = ""
-authors = ["David Marson"]
+authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 package-mode = false
 

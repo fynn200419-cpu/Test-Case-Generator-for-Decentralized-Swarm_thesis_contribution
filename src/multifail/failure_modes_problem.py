@@ -43,6 +43,10 @@ class FailureModesProblem(Problem):
         self.simulator = simulator
         self.generation = 0
         
+        #NEW CODE TO INTILIAZE LISTS FOR SEEDING
+        self.all_solutions_X = []
+        self.all_solutions_F = []
+
         # Load functional test data for timing bounds
         self.functional_df = pd.read_csv(functional_data_path)
         
@@ -143,10 +147,14 @@ class FailureModesProblem(Problem):
     
     def _get_trial_time_bounds(self):
         """Get flight start and end times for this problem's trial from functional data."""
-        trial_data = self.functional_df[self.functional_df['trial'] == self.trial_num]
+        trial_data = self.functional_df[(self.functional_df['trial'] == self.trial_num)
+                                        & (self.functional_df['num_agents'] == self.num_agents)]
         if len(trial_data) == 0:
             # Throw error if data not found
             raise ValueError(f"No functional data found for trial {self.trial_num}")
+        elif len(trial_data) > 1:
+            # Throw error if more than one row found
+            raise ValueError(f"More than one functional test result found for this trial and swarm size.")
         
         flight_start = trial_data['flight_start'].iloc[0]
         flight_end = trial_data['flight_end'].iloc[0]
@@ -361,3 +369,8 @@ class FailureModesProblem(Problem):
         out["F"] = fitness_all
         out["flight_time"] = flight_time_all
         out["collision_occur"] = collision_occur_all
+
+        #NEW CODE TO ADD FUNCTION FOR UPDATING SEEDS
+        # Store all solutions and fitness for seeding
+        self.all_solutions_X.append(x.copy())
+        self.all_solutions_F.append(fitness_all.copy())

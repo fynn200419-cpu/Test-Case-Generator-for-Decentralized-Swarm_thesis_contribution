@@ -31,10 +31,13 @@ def run_ga_failure_modes(vect_agents,
                          env_config_type = 0,
                          terminate_config=None,
                          flag_parallel=False,
-                         flag_eng_persist=True):
+                         flag_eng_persist=True,
+                         seeding_method='coordination',  # 'id' for seeding.py, 'coordination' for coordination_seeding.py, or 'none' for random
+                         functional_trajectory_dir=None, #passed functional path from main gets passed
+                         baseline_results_path=None):  # path to existing results folder for first agent size; skips re-running it
     """
     Run genetic algorithm search for failure scenarios in UAV swarms.
-    
+
     Parameters:
         vect_agents (np.array): Array of agent counts to test
         vect_trials (np.array): Array of trial numbers (maps) to test
@@ -47,7 +50,11 @@ def run_ga_failure_modes(vect_agents,
         v_ref (float): Reference velocity for velocity failure bounds
         flag_parallel (bool): Whether to use parallel simulation
         flag_eng_persist (bool): Whether to keep MATLAB engine persistent
-        
+        seeding_method (str): Seeding strategy - 'id' for ID-based (default), 'coordination' for spatial coordination, 'none' for no seeding
+        functional_trajectory_dir (str or Path): Path to functional baseline results directory containing 'trajectory_data/' subdirectory.
+                                    Required for coordination seeding. The trajectory_data/ folder should have iter001/, iter002/, etc.
+                                    with state_var.mat files from functional runs (no failures).
+
     Returns:
         Path: Directory where results were saved
     """
@@ -79,9 +86,15 @@ def run_ga_failure_modes(vect_agents,
         if flag_parallel:
             simulator.start_parallel_pool()
     
-    for num_agents in vect_agents:
+    vect_agents = list(vect_agents) #converting to python list for easier indexing
+
+    for idx, num_agents in enumerate(vect_agents): # loops through the indices and has the num_agents variable for current swarm size
         for trial_num in vect_trials:
             print(f"Running GA search: {num_agents} agents, trial {trial_num}")
+
+    # for num_agents in vect_agents:
+    #     for trial_num in vect_trials:
+    #         print(f"Running GA search: {num_agents} agents, trial {trial_num}")
             
             # Configure simulation parameters
             sim_config = {
@@ -133,11 +146,179 @@ def run_ga_failure_modes(vect_agents,
                 flags=flags,
                 simulator=simulator
             )
+
+            # Determine sampling strategy
+            from seeding.seeding import build_seeded_sampler
+            from pathlib import Path
+
+            # --- Baseline loading: skip GA for first agent size if pre-existing results provided ---
+            if idx == 0 and baseline_results_path is not None:
+                import shutil
+                baseline_path = Path(baseline_results_path)
+                src_pickle = baseline_path / f"seeds_{num_agents}agents_trial{trial_num}_failopt{failure_option}.pkl"
+                dst_pickle = folder_path / f"seeds_{num_agents}agents_trial{trial_num}_failopt{failure_option}.pkl"
+                src_result  = baseline_path / f"ga_result_{num_agents}agents_trial{trial_num}_failopt{failure_option}.pkl"
+
+                if src_pickle.exists() and src_result.exists():
+                    shutil.copy2(src_pickle, dst_pickle)
+                    with open(src_result, 'rb') as f:
+                        baseline_result_data = pickle.load(f)
+                    all_results.append(baseline_result_data)
+                    print(f"[BASELINE] Loaded trial {trial_num} ({num_agents} agents) from {baseline_results_path}")
+                    continue  # skip GA for this trial
+                else:
+                    print(f"[BASELINE] WARNING: Baseline files not found for trial {trial_num} "
+                          f"({num_agents} agents) — running GA with random sampling instead")
+                    print(f"[BASELINE]   Expected seed pickle : {src_pickle}")
+                    print(f"[BASELINE]   Expected result file : {src_result}")
+
+            # Seeding logic:
+            # - First agent count (idx==0): random sampling (or skipped above via baseline)
+            # - Subsequent agent counts: use seeding from previous agent count based on seeding_method
+
+            if idx == 0:
+                # First agent count always uses random sampling (no previous data to seed from)
+                sampling_strategy = FloatRandomSampling()
+                print(f"[SEEDING] Using random sampling (first agent count in list: {num_agents})")
+            elif seeding_method == 'none':
+                # Force no seeding even for subsequent runs
+                sampling_strategy = FloatRandomSampling()
+                print(f"[SEEDING] Using random sampling (seeding_method='none')")
+            elif seeding_method == 'constraint':
+                # Constraint seeding: tighten time bounds based on obstacle clearance,
+                # then use coordination seeding so seeds are filtered to the tightened window.
+                from seeding.constraintseeding import apply_obstacle_time_constraint
+                from seeding.coordination_seeding import build_coordination_seeded_sampler
+
+                prev_agent_count = vect_agents[idx - 1]
+                seed_path = folder_path / f"seeds_{prev_agent_count}agents_trial{trial_num}_failopt{failure_option}.pkl"
+
+                if functional_trajectory_dir is not None:
+                    functional_traj_dir = Path(functional_trajectory_dir)
+                else:
+                    functional_traj_dir = Path(functional_data_path).parent
+                traj_path = functional_traj_dir / "trajectory_data" / f"{num_agents}agents" / f"iter{trial_num:03d}" / "state_var.mat"
+
+                # Step 1: tighten problem.xu in-place (no return value)
+                if not traj_path.exists():
+                    print(f"[CONSTRAINT] WARNING: Functional trajectory not found: {traj_path}")
+                    print(f"[CONSTRAINT] Skipping constraint, bounds remain unchanged")
+                else:
+                    apply_obstacle_time_constraint(problem, env_config_type, trial_num, traj_path)
+
+                # Step 2: coordination seeding — seeds filtered against the (now tightened) bounds
+                if idx == 1 and baseline_results_path is not None:
+                    old_traj_source = Path(baseline_results_path)
+                else:
+                    old_traj_source = folder_path
+                old_traj_dir = old_traj_source / "top10_trajectories" / f"{prev_agent_count}agents_trial{trial_num}"
+                new_traj_path = traj_path
+
+                print(f"[SEEDING] Using constraint seeding: {prev_agent_count} -> {num_agents} agents")
+
+                if not new_traj_path.exists():
+                    print(f"[ERROR] Functional trajectory not found: {new_traj_path}, falling back to random sampling")
+                    sampling_strategy = FloatRandomSampling()
+                else:
+                    sampling_strategy = build_coordination_seeded_sampler(
+                        seed_pickle_path=seed_path,
+                        old_traj_dir=old_traj_dir,
+                        new_traj_path=new_traj_path,
+                        problem=problem,
+                        failure_option=failure_option,
+                        trial_idx=0,
+                        n_seed=10,
+                        n_pool=20
+                    )
+            else:
+                # Use seeding from previous agent count
+                prev_agent_count = vect_agents[idx - 1]
+                seed_path = folder_path / f"seeds_{prev_agent_count}agents_trial{trial_num}_failopt{failure_option}.pkl"
+
+                # Apply seeding based on selected method
+                if seeding_method == 'coordination':
+                    # Coordination seeding: uses spatial locations to match agents across swarm sizes
+                    # Auto-constructs paths:
+                    #   - old_traj_dir: folder_path/top10_trajectories/{prev_agents}agents_trial{N}/ (created after prev GA run)
+                    #   - new_traj_path: derived from functional_data_path parent directory + trajectory_data/iter{N}/state_var.mat
+                    from seeding.coordination_seeding import build_coordination_seeded_sampler
+
+                    # Derive functional trajectory directory from functional_data_path
+                    # functional_data_path points to dataframe.csv, so parent is the results folder
+                    # which contains trajectory_data/ subdirectory
+                    if functional_data_path is None:
+                        print("[WARNING] Coordination seeding requested but functional_data_path not provided!")
+                        print("[WARNING] Falling back to ID-based seeding")
+                        sampling_strategy = build_seeded_sampler(seed_path, problem, n_seed=10)
+                    else:
+                        # Auto-construct paths
+                        # Old trajectories: use baseline folder when idx==1 and baseline was provided,
+                        # otherwise use current run's folder (populated by rerun_top10 after prev swarm size)
+                        if idx == 1 and baseline_results_path is not None:
+                            old_traj_source = Path(baseline_results_path)
+                        else:
+                            old_traj_source = folder_path
+                        old_traj_dir = old_traj_source / "top10_trajectories" / f"{prev_agent_count}agents_trial{trial_num}"
+
+                        # New trajectories: derive from functional_data_path (parent folder contains trajectory_data/)
+                        # If functional_trajectory_dir is explicitly provided, use it; otherwise derive from functional_data_path
+                        if functional_trajectory_dir is not None:
+                            functional_traj_dir = Path(functional_trajectory_dir)
+                        else:
+                            functional_traj_dir = Path(functional_data_path).parent
+                        # Structure: trajectory_data/{num_agents}agents/iter{trial}/state_var.mat
+                        new_traj_path = functional_traj_dir / "trajectory_data" / f"{num_agents}agents" / f"iter{trial_num:03d}" / "state_var.mat" #correctly accessing the functional trajectory data that was store be
+
+                        print(f"[SEEDING] Using coordination seeding: {prev_agent_count} -> {num_agents} agents")
+                        print(f"[SEEDING]   Seed pickle (will exist after prev run): {seed_path}")
+                        print(f"[SEEDING]   Old trajectory dir (will exist after prev run): {old_traj_dir}")
+                        print(f"[SEEDING]   New trajectory (functional baseline): {new_traj_path}")
+
+                        # Check if new trajectory exists (this should exist from functional baseline)
+                        if not new_traj_path.exists():
+                            print(f"[ERROR] Functional trajectory file not found: {new_traj_path}")
+                            print(f"[ERROR] Make sure you ran functional baseline with trajectory saving enabled")
+                            print(f"[ERROR] Falling back to ID-based seeding")
+                            sampling_strategy = build_seeded_sampler(seed_path, problem, n_seed=10)
+                        else:
+                            # Let build_coordination_seeded_sampler handle missing old trajectories gracefully
+                            # (it will fall back to random sampling if files don't exist yet)
+                            sampling_strategy = build_coordination_seeded_sampler(
+                                seed_pickle_path=seed_path,
+                                old_traj_dir=old_traj_dir,
+                                new_traj_path=new_traj_path,
+                                problem=problem,
+                                failure_option=failure_option,
+                                trial_idx=0,
+                                n_seed=10,
+                                n_pool=20
+                            )
+                elif seeding_method == 'id':
+                    # ID-based seeding: traditional approach (only works for same swarm size)
+                    print(f"[SEEDING] Using ID-based seeding from {prev_agent_count} agents")
+                    sampling_strategy = build_seeded_sampler(seed_path, problem, n_seed=10)
+                else:
+                    raise ValueError(f"Unknown seeding_method: '{seeding_method}'. Must be 'id', 'coordination', 'constraint', or 'none'")
+
+
+
+            # #NEW CODE TO CALL SEEDING IF NECCESSARY
+            # # Determine sampling strategy
+            # from seeding import build_seeded_sampler
+            # if num_agents == vect_agents[0]:
+            #     sampling_strategy = FloatRandomSampling()
+            # else:
+            #     # Look for seed file from previous agent count
+            #     prev_agent_count = vect_agents[vect_agents.tolist().index(num_agents) - 1]
+            #     #vect_agents.tolist().index(num_agents) finds position of current swarmsize in the list. So -1 gets the index of previous size.
+            #     # since it is in vect_agents[] we get the agent count of that index and can filter in the next line for the correct seeding file.
+            #     seed_path = folder_path / f"seeds_{prev_agent_count}agents_trial{trial_num}_failopt{failure_option}.pkl"
+            #     sampling_strategy = build_seeded_sampler(seed_path, problem, n_seed=10)
             
             # Configure GA algorithm
             algorithm = GA(
                 pop_size=population_size,
-                sampling=FloatRandomSampling(),
+                sampling=sampling_strategy,
                 crossover=SBX(prob=0.9, eta=15),
                 mutation=PM(prob=1.0/problem.n_var, eta=20)
             )
@@ -178,7 +359,18 @@ def run_ga_failure_modes(vect_agents,
 
             # Remove simulator from results object to enable pickling later
             result.problem.simulator = None
-            
+
+            #NEWCODE TO SAVE SEEDS AFTER GA RUN
+            seed_data = {
+                'X': np.vstack(problem.all_solutions_X),
+                'F': np.concatenate(problem.all_solutions_F)
+            }
+            #stores all evaluated solutions and their fitness values during the GA run.
+            seed_pickle_path = folder_path / f"seeds_{num_agents}agents_trial{trial_num}_failopt{failure_option}.pkl"
+            #creates new seeds file which only contains X and F arrays.
+            with open(seed_pickle_path, 'wb') as f:
+                pickle.dump(seed_data, f)
+
             # Process results
             print(f"GA completed. Best fitness: {result.F[0]:.3f}")
             
@@ -231,7 +423,44 @@ def run_ga_failure_modes(vect_agents,
             # Shutdown simulator for this run if not persistent
             if not flag_eng_persist and simulator:
                 simulator.shutdown_engine()
-    
+
+        # After completing all trials for this swarm size, re-run top-10 solutions with trajectory saving
+        # This is needed for coordination seeding to work for the next swarm size.
+        # Skip if this was the baseline swarm size — trajectories already exist in baseline_results_path.
+        if idx < len(vect_agents) - 1 and seeding_method in ('coordination', 'constraint'):
+            if idx == 0 and baseline_results_path is not None:
+                print(f"\n{'='*60}")
+                print(f"[BASELINE] Skipping top-10 re-run for {num_agents} agents.")
+                print(f"[BASELINE] Trajectories will be read directly from baseline folder:")
+                print(f"[BASELINE]   {Path(baseline_results_path) / 'top10_trajectories'}")
+                print(f"{'='*60}\n")
+            else:
+                print(f"\n{'='*60}")
+                print(f"Re-running top-10 solutions for {num_agents} agents with trajectory saving...")
+                print(f"This generates trajectory data needed for coordination seeding")
+                print(f"{'='*60}")
+
+                from src.multifail.rerun_top10_with_trajectories import rerun_top10_solutions_with_trajectories
+
+                try:
+                    trajectory_paths = rerun_top10_solutions_with_trajectories(
+                        ga_results_dir=folder_path,
+                        num_agents_list=[num_agents],
+                        trial_list=list(vect_trials),
+                        failure_option=failure_option,
+                        n_seed=20,
+                        output_subdir='top10_trajectories'
+                    )
+                    print(f"\n{'='*60}")
+                    print(f"✓ Generated {len(trajectory_paths)} trajectory sets for coordination seeding")
+                    print(f"  Next swarm size ({vect_agents[idx + 1]} agents) will use these trajectories")
+                    print(f"{'='*60}\n")
+                except Exception as e:
+                    print(f"\n{'='*60}")
+                    print(f"[WARNING] Failed to generate top-10 trajectories: {e}")
+                    print(f"[WARNING] Coordination seeding for next swarm size may fall back to ID-based seeding")
+                    print(f"{'='*60}\n")
+
     # Create summary dataframe
     df_rows = []
     for result_data in all_results:
@@ -284,11 +513,7 @@ def run_ga_failure_modes(vect_agents,
     df.to_pickle(pickle_path)
     csv_path = folder_path / "dataframe.csv"
     df.to_csv(csv_path, index=False, na_rep='NaN')
-    
-    # Save all results summary
-    summary_path = folder_path / "all_results.pkl"
-    with open(summary_path, 'wb') as f:
-        pickle.dump(all_results, f)
+
     
     # Cleanup persistent simulator
     if flag_eng_persist :
@@ -311,17 +536,11 @@ def load_ga_results(results_path):
     import pathlib
     results_path = pathlib.Path(results_path)
     
-    # Load summary data
-    summary_path = results_path / "all_results.pkl" 
-    with open(summary_path, 'rb') as f:
-        all_results = pickle.load(f)
-    
     # Load dataframe
     df_path = results_path / "dataframe.pkl"
     df = pd.read_pickle(df_path)
     
     return {
-        'all_results': all_results,
         'dataframe': df,
         'results_directory': results_path
     }

@@ -177,7 +177,7 @@ def run_trial_new_wrapper(vect_agents, run_type="functional", swarm_r=float('inf
     # Configure execution flags
     flags = {
         'output_all_states': True,
-        'save': False,  # Don't save individual MATLAB results
+        'save': True,  # Save MATLAB results (needed for trajectory data for coordination seeding)
         'viz': False,
         'viz_video': False,
         'dynamic_end': True,
@@ -188,18 +188,27 @@ def run_trial_new_wrapper(vect_agents, run_type="functional", swarm_r=float('inf
     
     # Create results directory
     folder_path = create_results_dir(run_type)
-    results_dir = str(folder_path)
-    
+
+    # Create subdirectory for MATLAB trajectory files to keep main folder clean
+    trajectory_dir = folder_path / "trajectory_data"
+    trajectory_dir.mkdir(exist_ok=True)
+
     # Collect results for each agent count
     all_results = []
-    
+
     for i, n_agents in enumerate(num_agents):
-        print(f"Running functional test {i+1}/{num_runs} with {n_agents} agents")
-        
+        print(f"Running functional test {i+1}/{len(num_agents)} with {n_agents} agents")
+
+        # Create separate subdirectory for each agent count to avoid overwriting
+        # Structure: trajectory_data/{n_agents}agents/iter001/, iter002/, etc.
+        agent_trajectory_dir = trajectory_dir / f"{int(n_agents)}agents"
+        agent_trajectory_dir.mkdir(exist_ok=True)
+        results_dir = str(agent_trajectory_dir)
+
         # Update swarm config for current agent count
         current_swarm_config = swarm_config.copy()
         current_swarm_config['num_agents'] = int(n_agents)
-        
+
         # Run simulation
         result = sim.failure_modes_simulate(
             sim_config=sim_config,
